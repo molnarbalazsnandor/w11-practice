@@ -1,99 +1,98 @@
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const mediaTypes = {
-	"html": "text/html",
-	"jpeg": "image/jpeg",
-	"jpg": "image/jpeg",
-	"png": "image/png",
-	"svg": "image/svg+xml",
-	"json": "application/json",
-	"js": "text/javascript",
-	"css": "text/css",
-	"csv": "text/csv",
-	"mp3": "audio/mpeg",
-	"mp4": "video/mp4",
-	"oga": "audio/ogg",
-	"ogv": "video/ogg",
-	"pdf": "application/pdf",
-	"weba": "audio/webm",
-	"webm": "video/webm",
-	"webp": "image/webp",
-	"woff": "font/woff",
-	"woff2": "font/woff2",
-	"ttf": "font/ttf",
-	"gif": "image/gif"
-};
+const express = require("express");
+const path = require("path");
+//alap elérési útvonalakat csinál
+// a node.js globális eszköze
 
-const server = http.createServer((req, res) => {
+const fs = require("fs");
+//beimportálja a telepített express modult
 
-	const errorHTML = `
-		
-	<!DOCTYPE html>
-	<html lang="en">
-	<head>
-		<meta charset="UTF-8">
-		<meta http-equiv="X-UA-Compatible" content="IE=edge">
-		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<link rel="preconnect" href="https://fonts.googleapis.com"> 
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin> 
-		<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800&display=swap" rel="stylesheet">
-		<style>
-			body{
-				padding: 0; margin: 0;
-				font-family: 'Montserrat', sans-serif;
-				font-weight: 800;
-				background-color: #4343F9;
-				color: #fff;
-			}
-			#root{
-				width: 100%;
-				height: 100vh;
-				display: flex;
-				justify-content: center;
-				align-items: center;
-				font-size: 21px;
-			}
-		</style>
-		<title>Not here</title>
-	</head>
-	<body>
-		<div id="root">Rise your gaze to the sky<br/>than a bit back to the URL bar<br/>and check that link again</div>
-	</body>
-	</html>
-	
-	`;
-    
-	let filePath = path.resolve(__dirname + '/../frontend' + req.url);
-    
-	fs.access(filePath, fs.constants.R_OK, (err) => {
-	if(err){
-		res.statusCode = 404;
-		res.end(errorHTML);
-	}else{
-		if(fs.statSync(filePath).isDirectory()) {
-			filePath += '/index.html';
-		}
-		fs.readFile(filePath, "binary", (err, data) => {
-			if(err) {
-				res.statusCode = 500;
-				res.end(errorHTML);
-			} else {
-				let mediaType = mediaTypes[filePath.split('.').pop()];
-      
-				if (!mediaType) {
-					mediaType = 'text/plain';
-				}
-				res.writeHead(200, { "Content-Type": mediaType });
-				res.write(data, "binary");
-				res.end();
-			}
-		});
-	}
-	});
+const app = express();
+
+app.use(express.json()); //FONTOS!
+//json content type-ú post requesteket átalakít json formátummá
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(`${__dirname}/../frontend/index.html`));
 });
 
-server.listen(9000, "127.0.0.1", () => {
-    const addr = server.address();
-		console.log(`http://${addr.address}:${addr.port}`);
+app.use("/public", express.static(`${__dirname}/../frontend/public`));
+/*a 
+- use egy egész mappát tesz statikusan elérhetővé
+- azaz a mappát magát nem, hanem a tartalmait
+*/
+
+app.get("/beers", (req, res) => {
+  fs.readFile(`${__dirname}/data/data.json`, (err, data) => {
+    if (err) {
+      console.log("hiba:", err);
+      res.status(500).send("hibavan");
+    } else {
+      res.status(200).send(JSON.parse(data));
+    }
+  });
 });
+//readFile /readFileSync: az utóbbiban nem lehet felülírni mások módosításait, cserébe lehet kicsit lassabb
+
+app.get("/beers/:id", (req, res) => {
+  let paramId = parseInt(req.params.id);
+  //stringet csinálunk belőle
+
+  let response = "beer not found";
+
+  fs.readFile(`${__dirname}/data/data.json`, (err, data) => {
+    if (err) {
+      console.log("hiba:", err);
+      return res.status(500).send("error at reading file");
+    } else {
+      const beerData = JSON.parse(data);
+
+      beerData.forEach((beer) => {
+        if (beer.id === paramId) {
+          response = beer;
+        }
+      });
+
+      return res.send(response);
+    }
+  });
+});
+//"/beers/:id": id nevű változóban elmenti azt a lekérést, amit a böngészőben ide írunk, a req.params alatt
+
+app.post("/beers/:id", (req, res) => {
+  const paramId = parseInt(req.params.id);
+  const newBeerData = req.body;
+
+  console.log(newBeerData);
+
+  fs.readFile(`${__dirname}/data/data.json`, (err, data) => {
+    if (err) {
+      console.log("error:", err);
+      return res.status(500).send(err);
+    } else {
+      const beersData = JSON.parse(data);
+
+      for (let i = 0; i < beersData.length; i++) {
+        if (beersData[i].id === paramId) {
+          beersData[i] = newBeerData;
+        }
+      }
+
+      fs.writeFile(
+        `${__dirname}/data/data.json`,
+        JSON.stringify(beersData, null, 2),
+        (err) => {
+          if (err) {
+            console.log("error", err);
+            return res.status(500).send(err);
+          } else {
+            return res.send({ response: "done" });
+          }
+        }
+      );
+    }
+  });
+});
+
+app.listen(2022, console.log("server listening on http://127.0.0.1:2022"));
+//1. paraméter: megadja a portszámot ennek a figyelőnek
+//2. paraméter: mi történjen ezen a portszámon
